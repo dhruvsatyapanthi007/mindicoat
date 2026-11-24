@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mindi Coat tests</title>
+<style>
+  body { font: 14px/1.5 -apple-system, system-ui, sans-serif; margin: 24px; background: #fff; color: #222; }
+  .pass { color: #2f7a3a; } .fail { color: #c0262d; font-weight: 700; }
+  pre { background: #f6f3ec; padding: 10px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h1>Mindi Coat rules tests</h1>
+<div id="out">Running…</div>
+<script src="engine.js"></script>
+<script src="bot.js"></script>
+<script>
+const M = Mindi, B = MindiBot;
+const lines = [];
+let failed = 0;
+const check = (ok, msg) => { if (!ok) { failed++; lines.push(`<div class="fail">✗ ${msg}</div>`); } return ok; };
+const pass = msg => lines.push(`<div class="pass">✓ ${msg}</div>`);
+
+// Seeded random so failures can be replayed
+function rng(seed) { return () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296; }
+
+// 1. Trick winner rules
+{
+  const t = (...cs) => cs.map((card, seat) => ({ seat, card }));
+  check(M.winnerOf(t('5H0', 'KH0', '2H0', 'AS0'), null) === 1, 'no trump: highest of suit led wins');
+  check(M.winnerOf(t('5H0', 'KH0', '2S0', 'AS0'), 'S') === 3, 'highest trump wins');
+  check(M.winnerOf(t('5H0', 'KH0', '2S0', '3D0'), 'S') === 2, 'any trump beats the suit led');
+  check(M.winnerOf(t('AH0', 'AH1', '2H0', '3H0'), null) === 0, 'two decks: first of two equal cards wins');
+  pass('trick winner rules');
+}
+
+// 2. Cut hukum: the first off-suit card sets trump
+{
+  let st = M.newHand(4, 3, 'cut', rng(7));
+  st.hands = [['5H0', 'AS0'], ['KH0', '2C0'], ['3D0', '4D0'], ['9H0', '8H0']];
+  st.perHand = 2;
+  st = M.act(st, 0, { type: 'play', card: '5H0' });
+  st = M.act(st, 1, { type: 'play', card: 'KH0' });
+  check(M.legalPlays(st, 2).length === 2, "can't follow: any card is legal");
+  st = M.act(st, 2, { type: 'play', card: '3D0' });
+  check(st.trump === 'D' && st.trumpOpen, 'cut sets the trump to the suit played');
+  st = M.act(st, 3, { type: 'play', card: '9H0' });
+  st = M.collect(st);
+  check(st.lastTrick.winner === 2, 'the cutting card wins the trick');
+  pass('cut hukum');
+}
+
+// 3. Band hukum: hide, open, and the holder getting the card back
+{
+  let st = M.newHand(4, 3, 'band', rng(11));
+  check(st.phase === 'hide' && st.leader === 0, 'band hukum starts with the leader hiding a card');
+  const card = st.hands[0][0];
+  st = M.act(st, 0, { type: 'hide', card });
+  check(st.hands[0].length === 12 && !st.hands[0].includes(card), 'hidden card leaves the hand');
+  const v1 = M.viewFor(st, 1), v0 = M.viewFor(st, 0);
+  check(v1.trump === null && v1.hiddenCard === null, 'others cannot see the hidden trump');
+  check(v0.trump === M.suitOf(card) && v0.hiddenCard === card, 'holder sees their hidden card');
+  pass('band hukum hide and visibility');
+}
+
+// 4. Full random games with computer players
+const stats = {};
+for (const n of [4, 6, 8]) for (const mode of ['band', 'cut']) {
+  const key = `${n}p ${mode}`;
+  const s = stats[key] = { hands: 0, win: [0, 0], draw: 0, tens: 0, tricks: 0, mindikot: 0, fullcoat: 0, opened: 0, forced: 0 };
+  const deckSize = M.fullDeck(n).length, L = M.layout(n);
+  for (let g = 0; g < 400; g++) {
+    const r = rng(1000 * n + g + (mode === 'band' ? 0 : 99999));
+    let st = M.newHand(n, g % n, mode, r);
+    let steps = 0, ok = true;
+    try {
+      while (st.phase !== 'done' && steps++ < 2000) {
+        if (st.phase === 'collect') { st = M.collect(st); continue; }
+        const seat = st.phase === 'hide' ? st.leader : st.turn;
+        const a = B.botAction(st, seat, r);
+        st = M.act(st, seat, a);
+      }
+    } catch (e) { ok = check(false, `${key} game ${g}: ${e.message}`); }
+    if (!ok) continue;
+    check(st.phase === 'done', `${key} game ${g} finished`);
+    check(st.played.length === deckSize, `${key} game ${g}: all ${deckSize} cards played (got ${st.played.length})`);
+    check(new Set(st.played).size === deckSize, `${key} game ${g}: no card played twice`);
+    check(st.tricks[0] + st.tricks[1] === L.perHand, `${key} game ${g}: ${L.perHand} tricks`);
+    check(st.tens[0].length + st.tens[1].length === 4 * L.decks, `${key} game ${g}: all tens captured`);
+    const res = st.result;
+    s.hands++;
+    if (res.winner == null) s.draw++; else s.win[res.winner]++;
+    s[res.kind] = (s[res.kind] || 0) + 1;
+    if (st.events.some(e => e.type === 'open' && !e.forced)) s.opened++;
+    if (st.events.some(e => e.type === 'open' && e.forced)) s.forced++;
+    // dealer rule
+    const exp = res.winner != null && res.winner === M.team(st.dealer) ? (st.dealer + 1) % n : st.dealer;
+    check(res.nextDealer === exp, `${key} game ${g}: next dealer`);
+    if (res.kind === 'draw') check(n === 6 && res.tens[0] === res.tens[1] && st.tricks[0] === st.tricks[1], `${key} game ${g}: draw only on an even split`);
+  }
+}
+pass('random full hands (400 per setup)');
+
+const table = Object.entries(stats).map(([k, s]) =>
+  `${k.padEnd(9)} hands ${s.hands}  teamA ${s.win[0]}  teamB ${s.win[1]}  draw ${s.draw}  by-tens ${s.tens}  by-tricks ${s.tricks}  mindikot ${s.mindikot}  fullcoat ${s.fullcoat}  opened ${s.opened}  forced-open ${s.forced}`).join('\n');
+document.getElementById('out').innerHTML = `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? failed + ' failed' : 'All passed'}</h2>${lines.join('')}<pre>${table}</pre>`;
+window.TEST_RESULT = { failed, stats };
+</script>
+</body>
+</html>
