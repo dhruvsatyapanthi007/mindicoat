@@ -95,7 +95,9 @@ for (const n of [4, 6, 8]) for (const mode of ['band', 'cut']) {
     if (st.events.some(e => e.type === 'open' && !e.forced)) s.opened++;
     if (st.events.some(e => e.type === 'open' && e.forced)) s.forced++;
     // dealer rule
-    const exp = res.winner != null && res.winner === M.team(st.dealer) ? (st.dealer + 1) % n : st.dealer;
+    const exp = (st.dealer + (res.winner == null || res.winner === M.team(st.dealer) ? 1 : 2)) % n;
+    check(res.nextDealer !== st.dealer, `${key} game ${g}: the deal moves on`);
+    if (res.winner != null) check(M.team(res.nextDealer) !== res.winner, `${key} game ${g}: the losing side deals`);
     check(res.nextDealer === exp, `${key} game ${g}: next dealer`);
     if (res.kind === 'draw') check(n === 6 && res.tens[0] === res.tens[1] && st.tricks[0] === st.tricks[1], `${key} game ${g}: draw only on an even split`);
   }

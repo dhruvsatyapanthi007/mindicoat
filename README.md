@@ -7,7 +7,7 @@ No server and no account needed: the room creator's browser runs the game and ev
 
 - **Create a room**: pick 4, 6 or 8 players and share the 5-letter code or the invite link. Friends open the link on their phones.
   Partners sit opposite (same column in the lobby); empty seats get computer players.
-- **Team names**: tap a team's name in the lobby to rename it. The host can rename both teams; each player can rename their own.
+- **Team names**: tap a team's name to rename it, in the lobby or during the game. The host can rename both teams; each player can rename their own.
 - **Practise vs computer**: you plus computer players, works offline too.
 - **Install it as an app**: open the site on your phone, then *Share → Add to Home Screen* (iPhone) or *Install app* (Android/Chrome).
   It opens full screen with its own icon.
@@ -21,7 +21,7 @@ No server and no account needed: the room creator's browser runs the game and ev
   - *Cut hukum*: no hukum at first; the first card played off-suit sets it.
 - Capture the **mindis** (tens). More mindis wins the hand; if they're split evenly, more haath wins (6 players can draw).
 - **Points:** win 1 · **Mindi Coat** (all the tens) 3 · **Full Coat** (every haath) 5.
-- The losing side keeps the deal: if the dealer's team wins, the deal passes to the next player.
+- The first dealer is picked at random, and the player after the dealer leads. After each hand the losing side deals: the deal passes to the next player if the dealer's team won (or on a draw), or to the dealer's teammate if it lost, so the first lead moves around the table.
 - 4 players: 52 cards, 13 each. 6 players: the 2s are removed, 8 each. 8 players: two decks, 13 each; of two equal cards the first played wins.
 
 ## How it works

@@ -172,8 +172,10 @@
         : st.tens[w].length > st.tens[1 - w].length ? 'tens' : 'tricks';
     }
     const points = w == null ? 0 : POINTS[kind] || POINTS.win;
-    // Losing side keeps dealing: if the dealer's team won, the deal passes to the next player
-    const nextDealer = w != null && w === team(st.dealer) ? (st.dealer + 1) % st.n : st.dealer;
+    // The losing side deals next, and the deal always moves on: to the next player if the dealer's
+    // team won (or on a draw), or to the dealer's teammate two seats on if the dealer's team lost.
+    // So the first lead (left of the dealer) rotates around the table.
+    const nextDealer = (st.dealer + (w == null || w === team(st.dealer) ? 1 : 2)) % st.n;
     st.phase = 'done';
     st.turn = null;
     st.result = { winner: w, kind, points, tens: [a, b], tricks: st.tricks.slice(), nextDealer };

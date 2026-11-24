@@ -180,7 +180,7 @@ function hostBegin() {
   room.seats = room.seats.map((s, i) => s || { kind: 'bot', name: BOT_NAMES[i % BOT_NAMES.length] });
   room.started = true;
   room.handNo = 1;
-  room.game = M.newHand(room.n, room.n - 1, room.nextMode);
+  room.game = M.newHand(room.n, Math.floor(Math.random() * room.n), room.nextMode);   // random first dealer
   hostChanged();
 }
 function hostNextHand() {
@@ -349,8 +349,23 @@ function petals() {
 function render() {
   if (!S.role) return renderMenu();
   if (!S.room) return renderConnecting();
-  if (!S.room.started) return renderLobby();
-  return renderTable();
+  const ae = document.activeElement;
+  const typing = ae && ae.classList && ae.classList.contains('team-name')
+    ? { t: ae.dataset.team, v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
+  if (!S.room.started) renderLobby(); else renderTable();
+  wireTeamInputs(typing);
+}
+// Team names are editable everywhere they're shown: host both teams, players their own
+const canRename = t => S.role === 'host' || (S.mySeat != null && M.team(S.mySeat) === t);
+const teamInput = (t, prefix = '') => `<label class="tedit">${prefix}<input class="team-name" data-team="${t}" value="${esc(tShort(t))}" maxlength="14" enterkeyhint="done" aria-label="Team name"><span class="pen" aria-hidden="true">✎</span></label>`;
+function wireTeamInputs(typing) {
+  app.querySelectorAll('.team-name').forEach(inp => {
+    const t = +inp.dataset.team;
+    const save = () => { const v = cleanTeam(inp.value) || TEAM[t].short; inp.value = v; if (v !== tShort(t)) doTeam(t, v); };
+    inp.onchange = save;
+    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
+    if (typing && +typing.t === t) { inp.value = typing.v; inp.focus(); try { inp.setSelectionRange(typing.a, typing.b); } catch {} }
+  });
 }
 
 function brand() {
@@ -428,9 +443,6 @@ function renderConnecting() {
 }
 
 function renderLobby() {
-  const ae = document.activeElement;
-  const typing = ae && ae.classList && ae.classList.contains('team-name')
-    ? { t: ae.dataset.team, v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
   const room = S.room, host = S.role === 'host';
   const seatCard = i => {
     const s = room.seats[i], mine = i === S.mySeat;
@@ -465,9 +477,7 @@ function renderLobby() {
         <p class="hint">Friends open the link (or this site and type the code) on their phone. Partners sit opposite: seats in the same column are a team.</p>
       </div>
       <div class="teams">
-        ${[0, 1].map(t => `<div class="panel team t${t}"><h2><span class="tdot"></span>${host || (S.mySeat != null && M.team(S.mySeat) === t)
-            ? `<label class="tedit">Team <input class="team-name" data-team="${t}" value="${esc(tShort(t))}" maxlength="14" enterkeyhint="done" aria-label="Team name"><span class="pen" aria-hidden="true">✎</span></label>`
-            : esc(tName(t))}</h2>
+        ${[0, 1].map(t => `<div class="panel team t${t}"><h2><span class="tdot"></span>${canRename(t) ? teamInput(t, 'Team ') : esc(tName(t))}</h2>
           ${Array.from({ length: room.n }, (_, i) => i).filter(i => i % 2 === t).map(seatCard).join('')}</div>`).join('')}
       </div>
       <div class="panel">
@@ -489,13 +499,6 @@ function renderLobby() {
   app.querySelectorAll('[data-sit]').forEach(b => b.onclick = () => doSit(+b.dataset.sit));
   app.querySelectorAll('[data-bot]').forEach(b => b.onclick = () => hostToggleBot(+b.dataset.bot));
   wireModeSeg();
-  app.querySelectorAll('.team-name').forEach(inp => {
-    const t = +inp.dataset.team;
-    const save = () => { const v = cleanTeam(inp.value) || TEAM[t].short; inp.value = v; if (v !== tShort(t)) doTeam(t, v); };
-    inp.onchange = save;
-    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
-    if (typing && +typing.t === t) { inp.value = typing.v; inp.focus(); try { inp.setSelectionRange(typing.a, typing.b); } catch {} }
-  });
   const st = document.getElementById('start'); if (st) st.onclick = hostBegin;
 }
 const modeSeg = mode => `<div class="seg mode" id="modeseg">
@@ -564,7 +567,7 @@ function renderTable() {
   else if (v.phase === 'play') prompt = `Waiting for ${esc(seatName(room, v.turn))}…`;
 
   const teamBox = t => `<div class="tbox t${t}">
-    <div class="tname"><span class="tdot"></span>${esc(tShort(t))}${t === M.team(me) && S.mySeat != null ? ' (you)' : ''}</div>
+    <div class="tname"><span class="tdot"></span>${canRename(t) ? teamInput(t) : esc(tShort(t))}${t === M.team(me) && S.mySeat != null ? ' <span class="you">(you)</span>' : ''}</div>
     <div class="tstat"><span title="Haath (tricks)">${v.tricks[t]} haath</span>
       <span class="mindis">${v.tens[t].length ? v.tens[t].map(c => `<span class="mini ${M.SUIT_INFO[M.parse(c).s].red ? 'red' : ''}">10${sym(M.parse(c).s)}</span>`).join('') : '<span class="muted">no mindi</span>'}</span></div>
     <div class="pts">${room.series.points[t]} pts</div></div>`;
