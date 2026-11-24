@@ -91,6 +91,11 @@
   @media (max-width: 560px) { .teams { grid-template-columns: 1fr; gap: 0; } }
   .team h2 { margin: 0 0 8px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
   .tdot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+  .tedit { display: inline-flex; align-items: center; gap: 6px; cursor: text; min-width: 0; }
+  .team-name { font: inherit; color: inherit; background: transparent; border: 0; border-bottom: 1.5px dashed var(--line);
+    padding: 0 2px; width: 8.5em; max-width: 100%; min-width: 0; border-radius: 0; }
+  .team-name:focus { outline: none; border-bottom-color: var(--muted); }
+  .tedit .pen { color: var(--muted); font-size: 14px; }
   .t0 .tdot { background: var(--teamA); } .t1 .tdot { background: var(--teamB); }
   .team.t0 { border-top: 4px solid var(--teamA); } .team.t1 { border-top: 4px solid var(--teamB); }
   .seat-slot { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--line); flex-wrap: wrap; }

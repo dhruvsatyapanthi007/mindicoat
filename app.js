@@ -46,6 +46,10 @@ async function copyText(text) {
   let ok = false; try { ok = document.execCommand('copy'); } catch {}
   ta.remove(); return ok;
 }
+// Team names: set in the lobby (host: both teams; players: their own team)
+const cleanTeam = v => String(v || '').replace(/\s+/g, ' ').trim().replace(/^team\s+/i, '').slice(0, 14);
+const tShort = t => (S.room && S.room.teams && S.room.teams[t]) || TEAM[t].short;
+const tName = t => 'Team ' + tShort(t);
 const seatName = (room, i) => (room.seats[i] ? room.seats[i].name : `Seat ${i + 1}`);
 
 function cardHtml(id, cls = '', attrs = '') {
@@ -60,7 +64,7 @@ function newRoom(n, offline) {
   const seats = Array(n).fill(null);
   seats[0] = { kind: 'human', id: clientId, name: myName, online: true };
   return { code: offline ? 'SOLO' : genCode(), n, offline: !!offline, seats, started: false, nextMode: 'band',
-    game: null, handNo: 0, series: { points: [0, 0], hands: [] } };
+    teams: TEAM.map(x => x.short), game: null, handNo: 0, series: { points: [0, 0], hands: [] } };
 }
 function hostStart(room) {
   H = { code: room.code, room, conns: new Map(), peer: null, timer: null };
@@ -125,6 +129,7 @@ function hostOnMessage(conn, msg) {
   if (!conn._id) return;
   if (msg.t === 'sit') return hostSit(conn._id, +msg.seat);
   if (msg.t === 'act') return hostAct(conn._id, msg.a);
+  if (msg.t === 'team') return hostSetTeam(conn._id, +msg.team, msg.name);
 }
 function sendTo(id, msg) {
   if (id === clientId) return;
@@ -160,6 +165,15 @@ function hostToggleBot(i) {
   else if (room.seats[i].kind === 'bot') room.seats[i] = null;
   hostChanged();
 }
+function hostSetTeam(id, t, name) {
+  const room = H.room;
+  if (t !== 0 && t !== 1) return;
+  const seat = room.seats.findIndex(s => s && s.kind === 'human' && s.id === id);
+  if (id !== clientId && !(seat >= 0 && M.team(seat) === t)) return;   // players rename only their own team
+  room.teams = (room.teams || TEAM.map(x => x.short)).slice();
+  room.teams[t] = cleanTeam(name) || TEAM[t].short;
+  hostChanged();
+}
 function hostSetMode(mode) { H.room.nextMode = mode === 'cut' ? 'cut' : 'band'; hostChanged(); }
 function hostBegin() {
   const room = H.room;
@@ -188,7 +202,7 @@ function hostEnd() {
 function publicRoom(room) {
   return {
     code: room.code, n: room.n, offline: room.offline, started: room.started, nextMode: room.nextMode,
-    handNo: room.handNo, series: room.series,
+    teams: room.teams || TEAM.map(x => x.short), handNo: room.handNo, series: room.series,
     seats: room.seats.map(s => s && { kind: s.kind, name: s.name, online: s.kind === 'bot' || s.online, id: s.kind === 'human' ? s.id : null }),
   };
 }
@@ -286,6 +300,7 @@ function guestLeave() {
 
 /* ---------------- shared actions ---------------- */
 function doAct(a) { if (S.role === 'host') hostAct(clientId, a); else if (C && C.conn && C.conn.open) C.conn.send({ t: 'act', a }); }
+function doTeam(t, name) { if (S.role === 'host') hostSetTeam(clientId, t, name); else if (C && C.conn && C.conn.open) C.conn.send({ t: 'team', team: t, name }); }
 function doSit(seat) { if (S.role === 'host') hostSit(clientId, seat); else if (C && C.conn && C.conn.open) C.conn.send({ t: 'sit', seat }); }
 function leave() {
   if (S.role === 'host') {
@@ -313,7 +328,7 @@ function announce(e) {
   const suit = s => `<b class="${M.SUIT_INFO[s].red ? 'red' : ''}">${sym(s)} ${M.SUIT_INFO[s].name}</b>`;
   if (e.type === 'open') toast(e.forced ? `Hukum opens: ${suit(e.suit)}` : `${nm(e.seat)} opened the hukum: ${suit(e.suit)}`, 3200);
   else if (e.type === 'cut') toast(`${nm(e.seat)} cut! ${suit(e.suit)} is hukum`, 3200);
-  else if (e.type === 'trick' && e.tens.length) toast(`${nm(e.seat)} took ${e.tens.length > 1 ? e.tens.length + ' mindis' : 'a mindi'} for ${TEAM[M.team(e.seat)].short} 🎯`);
+  else if (e.type === 'trick' && e.tens.length) toast(`${nm(e.seat)} took ${e.tens.length > 1 ? e.tens.length + ' mindis' : 'a mindi'} for ${esc(tShort(M.team(e.seat)))} 🎯`);
   else if (e.type === 'done') petals();
 }
 function petals() {
@@ -413,6 +428,9 @@ function renderConnecting() {
 }
 
 function renderLobby() {
+  const ae = document.activeElement;
+  const typing = ae && ae.classList && ae.classList.contains('team-name')
+    ? { t: ae.dataset.team, v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
   const room = S.room, host = S.role === 'host';
   const seatCard = i => {
     const s = room.seats[i], mine = i === S.mySeat;
@@ -447,7 +465,9 @@ function renderLobby() {
         <p class="hint">Friends open the link (or this site and type the code) on their phone. Partners sit opposite: seats in the same column are a team.</p>
       </div>
       <div class="teams">
-        ${[0, 1].map(t => `<div class="panel team t${t}"><h2><span class="tdot"></span>${TEAM[t].name}</h2>
+        ${[0, 1].map(t => `<div class="panel team t${t}"><h2><span class="tdot"></span>${host || (S.mySeat != null && M.team(S.mySeat) === t)
+            ? `<label class="tedit">Team <input class="team-name" data-team="${t}" value="${esc(tShort(t))}" maxlength="14" enterkeyhint="done" aria-label="Team name"><span class="pen" aria-hidden="true">✎</span></label>`
+            : esc(tName(t))}</h2>
           ${Array.from({ length: room.n }, (_, i) => i).filter(i => i % 2 === t).map(seatCard).join('')}</div>`).join('')}
       </div>
       <div class="panel">
@@ -469,6 +489,13 @@ function renderLobby() {
   app.querySelectorAll('[data-sit]').forEach(b => b.onclick = () => doSit(+b.dataset.sit));
   app.querySelectorAll('[data-bot]').forEach(b => b.onclick = () => hostToggleBot(+b.dataset.bot));
   wireModeSeg();
+  app.querySelectorAll('.team-name').forEach(inp => {
+    const t = +inp.dataset.team;
+    const save = () => { const v = cleanTeam(inp.value) || TEAM[t].short; inp.value = v; if (v !== tShort(t)) doTeam(t, v); };
+    inp.onchange = save;
+    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
+    if (typing && +typing.t === t) { inp.value = typing.v; inp.focus(); try { inp.setSelectionRange(typing.a, typing.b); } catch {} }
+  });
   const st = document.getElementById('start'); if (st) st.onclick = hostBegin;
 }
 const modeSeg = mode => `<div class="seg mode" id="modeseg">
@@ -537,7 +564,7 @@ function renderTable() {
   else if (v.phase === 'play') prompt = `Waiting for ${esc(seatName(room, v.turn))}…`;
 
   const teamBox = t => `<div class="tbox t${t}">
-    <div class="tname"><span class="tdot"></span>${TEAM[t].short}${t === M.team(me) && S.mySeat != null ? ' (you)' : ''}</div>
+    <div class="tname"><span class="tdot"></span>${esc(tShort(t))}${t === M.team(me) && S.mySeat != null ? ' (you)' : ''}</div>
     <div class="tstat"><span title="Haath (tricks)">${v.tricks[t]} haath</span>
       <span class="mindis">${v.tens[t].length ? v.tens[t].map(c => `<span class="mini ${M.SUIT_INFO[M.parse(c).s].red ? 'red' : ''}">10${sym(M.parse(c).s)}</span>`).join('') : '<span class="muted">no mindi</span>'}</span></div>
     <div class="pts">${room.series.points[t]} pts</div></div>`;
@@ -584,16 +611,16 @@ function renderTable() {
 function resultHtml(room, v, host) {
   const r = v.result, me = S.mySeat;
   const mine = me != null && r.winner === M.team(me);
-  const head = r.winner == null ? 'Barabar! (draw)' : `${TEAM[r.winner].name} jitya!`;
+  const head = r.winner == null ? 'Barabar! (draw)' : `${esc(tName(r.winner))} jitya!`;
   const big = r.kind === 'mindikot' || r.kind === 'fullcoat';
   const hist = room.series.hands.slice(-6).reverse().map(h => `<tr><td>#${h.no}</td><td>${h.mode === 'band' ? 'Band' : 'Cut'}</td>
-    <td>${h.winner == null ? 'Draw' : TEAM[h.winner].short}</td><td>${h.kind === 'mindikot' ? 'Mindi Coat' : h.kind === 'fullcoat' ? 'Full Coat' : h.kind === 'draw' ? '–' : h.tens.join('–') + ' mindi'}</td><td>${h.points ? '+' + h.points : ''}</td></tr>`).join('');
+    <td>${h.winner == null ? 'Draw' : esc(tShort(h.winner))}</td><td>${h.kind === 'mindikot' ? 'Mindi Coat' : h.kind === 'fullcoat' ? 'Full Coat' : h.kind === 'draw' ? '–' : h.tens.join('–') + ' mindi'}</td><td>${h.points ? '+' + h.points : ''}</td></tr>`).join('');
   return `<div class="overlay"><div class="result panel ${big ? 'big' : ''}">
     <div class="rhead t${r.winner ?? ''}">${head}</div>
     <div class="rkind">${big ? '🎉 ' : ''}${KIND_TEXT[r.kind]}${r.points ? ` · <b>+${r.points}</b> point${r.points > 1 ? 's' : ''}` : ''}</div>
     ${me != null && r.winner != null ? `<div class="muted">${mine ? 'Shabash! Your team won this hand.' : 'Arere! Next one is yours.'}</div>` : ''}
     <div class="rgrid">
-      ${[0, 1].map(t => `<div class="t${t}"><div class="tname"><span class="tdot"></span>${TEAM[t].short}</div><div><b>${r.tens[t]}</b> mindi · <b>${r.tricks[t]}</b> haath</div><div class="pts">${room.series.points[t]} pts total</div></div>`).join('')}
+      ${[0, 1].map(t => `<div class="t${t}"><div class="tname"><span class="tdot"></span>${esc(tShort(t))}</div><div><b>${r.tens[t]}</b> mindi · <b>${r.tricks[t]}</b> haath</div><div class="pts">${room.series.points[t]} pts total</div></div>`).join('')}
     </div>
     <table class="hist"><thead><tr><th>Hand</th><th>Hukum</th><th>Won</th><th>How</th><th>Pts</th></tr></thead><tbody>${hist}</tbody></table>
     <div class="muted" style="margin:8px 0">Next dealer: <b>${esc(seatName(room, r.nextDealer))}</b></div>

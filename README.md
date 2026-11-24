@@ -7,6 +7,7 @@ No server and no account needed: the room creator's browser runs the game and ev
 
 - **Create a room**: pick 4, 6 or 8 players and share the 5-letter code or the invite link. Friends open the link on their phones.
   Partners sit opposite (same column in the lobby); empty seats get computer players.
+- **Team names**: tap a team's name in the lobby to rename it. The host can rename both teams; each player can rename their own.
 - **Practise vs computer**: you plus computer players, works offline too.
 - **Install it as an app**: open the site on your phone, then *Share → Add to Home Screen* (iPhone) or *Install app* (Android/Chrome).
   It opens full screen with its own icon.
