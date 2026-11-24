@@ -36,6 +36,16 @@ function toast(msg, ms = 2400) {
 const genCode = () => Array.from({ length: 5 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join('');
 const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 16);
 const shareUrl = code => `${location.origin}${location.pathname}#join=${code}`;
+// Copy text: the Clipboard API, then the older execCommand route (works where clipboard permission is denied)
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+  let ok = false; try { ok = document.execCommand('copy'); } catch {}
+  ta.remove(); return ok;
+}
 const seatName = (room, i) => (room.seats[i] ? room.seats[i].name : `Seat ${i + 1}`);
 
 function cardHtml(id, cls = '', attrs = '') {
@@ -433,6 +443,7 @@ function renderLobby() {
             ${navigator.share ? '<button class="btn" id="share">Share…</button>' : ''}
           </div>
         </div>
+        <input class="invite-link" id="invlink" readonly value="${esc(shareUrl(room.code))}" aria-label="Invite link">
         <p class="hint">Friends open the link (or this site and type the code) on their phone. Partners sit opposite: seats in the same column are a team.</p>
       </div>
       <div class="teams">
@@ -447,7 +458,12 @@ function renderLobby() {
       </div>
     </div>`;
   document.getElementById('leave').onclick = leave;
-  document.getElementById('copy').onclick = async () => { try { await navigator.clipboard.writeText(shareUrl(room.code)); toast('Invite link copied'); } catch { prompt('Copy this link', shareUrl(room.code)); } };
+  const inv = document.getElementById('invlink');
+  inv.onclick = () => inv.select();
+  document.getElementById('copy').onclick = async () => {
+    if (await copyText(shareUrl(room.code))) toast('Invite link copied');
+    else { inv.focus(); inv.select(); toast('Couldn’t copy automatically: the link is selected, copy it from the box'); }
+  };
   const sh = document.getElementById('share');
   if (sh) sh.onclick = () => navigator.share({ title: 'Mindi Coat', text: `Join my Mindi Coat room ${room.code}`, url: shareUrl(room.code) }).catch(() => {});
   app.querySelectorAll('[data-sit]').forEach(b => b.onclick = () => doSit(+b.dataset.sit));
